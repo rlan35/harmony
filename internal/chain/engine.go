@@ -175,6 +175,10 @@ func (e *engineImpl) VerifyShardState(bc engine.ChainReader, beacon engine.Chain
 		if err != nil {
 			headerSS = shard.State{}
 		}
+		utils.Logger().Info().
+			RawJSON("RECREATED", []byte(shardState.JSON())).
+			RawJSON("HEADERS", []byte(headerSS.JSON())).
+			Msg("FAILUREE")
 		return ctxerror.New("[VerifyShardState] ShardState is Invalid", "shardStateEpoch", shardState.Epoch, "headerEpoch", header.Epoch(), "headerShardStateEpoch", headerSS.Epoch, "beaconEpoch", beacon.CurrentHeader().Epoch())
 	}
 
