@@ -138,6 +138,7 @@ func ComputeCurrentSigning(
 		new(big.Int).Sub(statsNow.NumBlocksSigned, snapSigned),
 		new(big.Int).Sub(statsNow.NumBlocksToSign, snapToSign)
 
+	utils.Logger().Debug().Interface("snapshotWhole", snapshot).Interface("Whole", wrapper).Interface("snapshot", snapshot.Counters).Interface("current", wrapper.Counters).Msg("TESTINGTESTING")
 	computed := staking.NewComputed(
 		signed, toSign, 0, numeric.ZeroDec(), true,
 	)
@@ -159,6 +160,7 @@ func ComputeCurrentSigning(
 	s1, s2 := numeric.NewDecFromBigInt(signed), numeric.NewDecFromBigInt(toSign)
 	computed.Percentage = s1.Quo(s2)
 	computed.IsBelowThreshold = IsBelowSigningThreshold(computed.Percentage)
+	utils.Logger().Debug().Interface("computed1", computed).Msg("CHECKCHECK")
 	return computed
 }
 
@@ -205,6 +207,7 @@ func ComputeAndMutateEPOSStatus(
 		wrapper.Status = effective.Inactive
 		utils.Logger().Info().
 			Str("threshold", measure.String()).
+			Interface("computed", computed).
 			Msg("validator failed availability threshold, set to inactive")
 	default:
 		// Default is no-op so validator who wants
