@@ -62,9 +62,7 @@ func (consensus *Consensus) handleMessageUpdate(payload []byte) {
 		}
 	}
 
-	intendedForValidator, intendedForLeader :=
-		!consensus.IsLeader(),
-		consensus.IsLeader()
+	intendedForValidator, intendedForLeader := false, true
 
 	switch t := msg.Type; true {
 	// Handle validator intended messages first
