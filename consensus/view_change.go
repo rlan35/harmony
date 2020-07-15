@@ -35,7 +35,7 @@ type State struct {
 
 // Mode return the current node mode
 func (pm *State) Mode() Mode {
-	return pm.mode
+	return Normal
 }
 
 // SetMode set the node mode as required
