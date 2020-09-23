@@ -63,10 +63,10 @@ Examples usage:
     ./harmony --http.ip=0.0.0.0 --http.port=[http_port] --ws.ip=0.0.0.0 --ws.port=[ws_port]
 
 # start an explorer node
-    ./harmony --run=explorer --run.archive --run.shard=[shard_id]
+    ./harmony --run=explorer --run.shard=[shard_id]
 
 # start a harmony internal node on testnet
-    ./harmony --run.legacy --network
+    ./harmony --run.legacy --network testnet
 `,
 	Run: runHarmonyNode,
 }
@@ -600,7 +600,7 @@ func setupConsensusAndNode(hc harmonyConfig, nodeConfig *nodeconfig.ConfigType) 
 
 	// Set the consensus ID to be the current block number
 	viewID := currentNode.Blockchain().CurrentBlock().Header().ViewID().Uint64()
-	currentConsensus.SetViewID(viewID + 1)
+	currentConsensus.SetViewIDs(viewID + 1)
 	utils.Logger().Info().
 		Uint64("viewID", viewID).
 		Msg("Init Blockchain")

@@ -86,6 +86,11 @@ func (node *Node) StartRosetta() error {
 	return rosetta.StartServers(harmony, node.NodeConfig.RosettaServer)
 }
 
+// StopRosetta stops rosetta service
+func (node *Node) StopRosetta() error {
+	return rosetta.StopServers()
+}
+
 // APIs return the collection of local RPC services.
 // NOTE, some of these services probably need to be moved to somewhere else.
 func (node *Node) APIs(harmony *hmy.Harmony) []rpc.API {
@@ -100,4 +105,24 @@ func (node *Node) APIs(harmony *hmy.Harmony) []rpc.API {
 			Public:    true,
 		},
 	}
+}
+
+// GetConsensusMode returns the current consensus mode
+func (node *Node) GetConsensusMode() string {
+	return node.Consensus.GetConsensusMode()
+}
+
+// GetConsensusPhase returns the current consensus phase
+func (node *Node) GetConsensusPhase() string {
+	return node.Consensus.GetConsensusPhase()
+}
+
+// GetConsensusViewChangingID returns the view changing ID
+func (node *Node) GetConsensusViewChangingID() uint64 {
+	return node.Consensus.GetViewChangingID()
+}
+
+// GetConsensusCurViewID returns the current view ID
+func (node *Node) GetConsensusCurViewID() uint64 {
+	return node.Consensus.GetCurViewID()
 }

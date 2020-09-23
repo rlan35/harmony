@@ -522,3 +522,13 @@ func (node *Node) getEncodedBlockByHash(hash common.Hash) ([]byte, error) {
 	blockReqCache.Add(hash, b)
 	return b, nil
 }
+
+// GetMaxPeerHeight ...
+func (node *Node) GetMaxPeerHeight() uint64 {
+	return node.stateSync.GetMaxPeerHeight()
+}
+
+// IsOutOfSync ...
+func (node *Node) IsOutOfSync(bc *core.BlockChain) bool {
+	return node.stateSync.IsOutOfSync(bc)
+}

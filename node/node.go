@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"os"
@@ -95,7 +94,6 @@ type Node struct {
 	host p2p.Host
 	// Service manager.
 	serviceManager               *service.Manager
-	ContractDeployerKey          *ecdsa.PrivateKey
 	ContractDeployerCurrentNonce uint64 // The nonce of the deployer contract at current block
 	ContractAddresses            []common.Address
 	// Channel to notify consensus service to really start consensus
@@ -455,6 +453,12 @@ func (node *Node) validateShardBoundMessage(
 	if node.Consensus.IsViewChangingMode() {
 		switch m.Type {
 		case msg_pb.MessageType_PREPARE, msg_pb.MessageType_COMMIT:
+			return nil, nil, true, nil
+		}
+	} else {
+		// ignore newview message if the node is not in viewchanging mode
+		switch m.Type {
+		case msg_pb.MessageType_NEWVIEW:
 			return nil, nil, true, nil
 		}
 	}

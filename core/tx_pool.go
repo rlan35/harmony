@@ -728,15 +728,17 @@ func (pool *TxPool) validateTx(tx types.PoolTransaction, local bool) error {
 	if err != nil {
 		return err
 	}
-	if pool.currentState.GetBalance(from).Cmp(cost) < 0 {
-		return errors.Wrapf(
-			ErrInsufficientFunds,
-			"current shard-id: %d",
-			pool.chain.CurrentBlock().ShardID(),
-		)
+	stakingTx, isStakingTx := tx.(*staking.StakingTransaction)
+	if !isStakingTx || (isStakingTx && stakingTx.StakingType() != staking.DirectiveDelegate) {
+		if pool.currentState.GetBalance(from).Cmp(cost) < 0 {
+			return errors.Wrapf(
+				ErrInsufficientFunds,
+				"current shard-id: %d",
+				pool.chain.CurrentBlock().ShardID(),
+			)
+		}
 	}
 	intrGas := uint64(0)
-	stakingTx, isStakingTx := tx.(*staking.StakingTransaction)
 	if isStakingTx {
 		intrGas, err = IntrinsicGas(tx.Data(), false, pool.homestead, stakingTx.StakingType() == staking.DirectiveCreateValidator)
 	} else {
@@ -823,7 +825,18 @@ func (pool *TxPool) validateStakingTx(tx *staking.StakingTransaction) error {
 			return errors.WithMessagef(ErrInvalidSender, "staking transaction sender is %s", b32)
 		}
 
-		_, _, err = VerifyAndDelegateFromMsg(pool.currentState, stkMsg)
+		chain, ok := pool.chain.(ChainContext)
+		if !ok {
+			utils.Logger().Debug().Msg("Missing chain context in txPool")
+			return nil // for testing, chain could be testing blockchain
+		}
+		delegations, err := chain.ReadDelegationsByDelegator(stkMsg.DelegatorAddress)
+		if err != nil {
+			return err
+		}
+		pendingEpoch := pool.pendingEpoch()
+		_, _, _, err = VerifyAndDelegateFromMsg(
+			pool.currentState, pendingEpoch, stkMsg, delegations, pool.chainconfig.IsRedelegation(pendingEpoch))
 		return err
 	case staking.DirectiveUndelegate:
 		msg, err := staking.RLPDecodeStakeMsg(tx.Data(), staking.DirectiveUndelegate)
@@ -837,12 +850,8 @@ func (pool *TxPool) validateStakingTx(tx *staking.StakingTransaction) error {
 		if from != stkMsg.DelegatorAddress {
 			return errors.WithMessagef(ErrInvalidSender, "staking transaction sender is %s", b32)
 		}
-		pendingEpoch := pool.chain.CurrentBlock().Epoch()
-		if shard.Schedule.IsLastBlock(pool.chain.CurrentBlock().Number().Uint64()) {
-			pendingEpoch = new(big.Int).Add(pendingEpoch, big.NewInt(1))
-		}
 
-		_, err = VerifyAndUndelegateFromMsg(pool.currentState, pendingEpoch, stkMsg)
+		_, err = VerifyAndUndelegateFromMsg(pool.currentState, pool.pendingEpoch(), stkMsg)
 		return err
 	case staking.DirectiveCollectRewards:
 		msg, err := staking.RLPDecodeStakeMsg(tx.Data(), staking.DirectiveCollectRewards)
@@ -858,6 +867,7 @@ func (pool *TxPool) validateStakingTx(tx *staking.StakingTransaction) error {
 		}
 		chain, ok := pool.chain.(ChainContext)
 		if !ok {
+			utils.Logger().Debug().Msg("Missing chain context in txPool")
 			return nil // for testing, chain could be testing blockchain
 		}
 		delegations, err := chain.ReadDelegationsByDelegator(stkMsg.DelegatorAddress)
@@ -870,6 +880,15 @@ func (pool *TxPool) validateStakingTx(tx *staking.StakingTransaction) error {
 	default:
 		return staking.ErrInvalidStakingKind
 	}
+}
+
+func (pool *TxPool) pendingEpoch() *big.Int {
+	currentBlock := pool.chain.CurrentBlock()
+	pendingEpoch := currentBlock.Epoch()
+	if shard.Schedule.IsLastBlock(currentBlock.Number().Uint64()) {
+		pendingEpoch.Add(pendingEpoch, big.NewInt(1))
+	}
+	return pendingEpoch
 }
 
 // add validates a transaction and inserts it into the non-executable queue for
@@ -952,6 +971,9 @@ func (pool *TxPool) add(tx types.PoolTransaction, local bool) (bool, error) {
 		pool.priced.Put(tx)
 		pool.journalTx(from, tx)
 
+		// Set or refresh beat for account timeout eviction
+		pool.beats[from] = time.Now()
+
 		logger.Info().
 			Str("hash", tx.Hash().Hex()).
 			Interface("from", from).
@@ -977,6 +999,9 @@ func (pool *TxPool) add(tx types.PoolTransaction, local bool) (bool, error) {
 		}
 	}
 	pool.journalTx(from, tx)
+
+	// Set or refresh beat for account timeout eviction
+	pool.beats[from] = time.Now()
 
 	logger.Info().
 		Str("hash", hash.Hex()).
@@ -1276,7 +1301,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) {
 			// Do not report to error sink as old txs are on chain or meaningful error caught elsewhere.
 		}
 		// Drop all transactions that are too costly (low balance or out of gas)
-		drops, _ := list.FilterCost(pool.currentState.GetBalance(addr), pool.currentMaxGas)
+		drops, _ := list.FilterValid(pool, addr)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1449,18 +1474,7 @@ func (pool *TxPool) demoteUnexecutables() {
 			// Do not report to error sink as old txs are on chain or meaningful error caught elsewhere.
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
-		drops, invalids := list.FilterCost(pool.currentState.GetBalance(addr), pool.currentMaxGas)
-		// Drop all staking transactions that are now invalid, queue any invalids back for later
-		stakingDrops, stakingInvalids := list.Filter(func(tx types.PoolTransaction) bool {
-			if _, ok := tx.(*staking.StakingTransaction); !ok {
-				// Do not remove anything other than staking transactions
-				return false
-			}
-			err := pool.validateTx(tx, false)
-			return err != nil
-		})
-		drops = append(drops, stakingDrops...)
-		invalids = append(invalids, stakingInvalids...)
+		drops, invalids := list.FilterValid(pool, addr)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)

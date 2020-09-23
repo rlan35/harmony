@@ -245,7 +245,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 		ret, st.gas, vmerr = evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 	if vmerr != nil {
-		utils.Logger().Debug().Err(vmerr).Msg("VM returned with error")
+		utils.Logger().Info().Err(vmerr).Msg("VM returned with error")
 		// The only possible consensus-error would be if there wasn't
 		// sufficient balance to make the transfer happen. The first
 		// balance transfer may never fail.
@@ -364,16 +364,7 @@ func (st *StateTransition) StakingTransitionDb() (usedGas uint64, err error) {
 		if msg.From() != stkMsg.DelegatorAddress {
 			return 0, errInvalidSigner
 		}
-		collectedRewards, tempErr := st.verifyAndApplyCollectRewards(stkMsg)
-		err = tempErr
-		if err == nil {
-			st.state.AddLog(&types.Log{
-				Address:     stkMsg.DelegatorAddress,
-				Topics:      []common.Hash{staking2.CollectRewardsTopic},
-				Data:        collectedRewards.Bytes(),
-				BlockNumber: st.evm.BlockNumber.Uint64(),
-			})
-		}
+		_, err = st.verifyAndApplyCollectRewards(stkMsg)
 	default:
 		return 0, staking.ErrInvalidStakingKind
 	}
@@ -416,14 +407,41 @@ func (st *StateTransition) verifyAndApplyEditValidatorTx(
 }
 
 func (st *StateTransition) verifyAndApplyDelegateTx(delegate *staking.Delegate) error {
-	wrapper, balanceToBeDeducted, err := VerifyAndDelegateFromMsg(st.state, delegate)
+	delegations, err := st.bc.ReadDelegationsByDelegator(delegate.DelegatorAddress)
+	if err != nil {
+		return err
+	}
+	updatedValidatorWrappers, balanceToBeDeducted, fromLockedTokens, err := VerifyAndDelegateFromMsg(
+		st.state, st.evm.EpochNumber, delegate, delegations, st.evm.ChainConfig().IsRedelegation(st.evm.EpochNumber))
 	if err != nil {
 		return err
 	}
 
+	for _, wrapper := range updatedValidatorWrappers {
+		if err := st.state.UpdateValidatorWrapper(wrapper.Address, wrapper); err != nil {
+			return err
+		}
+	}
+
 	st.state.SubBalance(delegate.DelegatorAddress, balanceToBeDeducted)
 
-	return st.state.UpdateValidatorWrapper(wrapper.Address, wrapper)
+	// Add log if everything is good
+	for valAddr, redelegatedToken := range fromLockedTokens {
+		encodedRedelegationData := []byte{}
+		addrBytes := valAddr.Bytes()
+		encodedRedelegationData = append(encodedRedelegationData, addrBytes...)
+		encodedRedelegationData = append(encodedRedelegationData, redelegatedToken.Bytes()...)
+		// The data field format is:
+		// [first 20 bytes]: Validator address from which the locked token is used for redelegation.
+		// [rest of the bytes]: the bigInt serialized bytes for the token amount.
+		st.state.AddLog(&types.Log{
+			Address:     delegate.DelegatorAddress,
+			Topics:      []common.Hash{staking2.DelegateTopic},
+			Data:        encodedRedelegationData,
+			BlockNumber: st.evm.BlockNumber.Uint64(),
+		})
+	}
+	return nil
 }
 
 func (st *StateTransition) verifyAndApplyUndelegateTx(
@@ -456,5 +474,14 @@ func (st *StateTransition) verifyAndApplyCollectRewards(collectRewards *staking.
 		}
 	}
 	st.state.AddBalance(collectRewards.DelegatorAddress, totalRewards)
+
+	// Add log if everything is good
+	st.state.AddLog(&types.Log{
+		Address:     collectRewards.DelegatorAddress,
+		Topics:      []common.Hash{staking2.CollectRewardsTopic},
+		Data:        totalRewards.Bytes(),
+		BlockNumber: st.evm.BlockNumber.Uint64(),
+	})
+
 	return totalRewards, nil
 }
