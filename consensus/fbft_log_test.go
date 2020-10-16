@@ -41,6 +41,25 @@ func TestFBFTLog_id(t *testing.T) {
 	}
 }
 
+func BenchmarkFBFGLog_id(b *testing.B) {
+	msg := FBFTMessage{
+		MessageType: msg_pb.MessageType_ANNOUNCE,
+		BlockHash:   [32]byte{01, 02},
+		SenderPubkeys: []*bls.PublicKeyWrapper{
+			{
+				Bytes: bls.SerializedPublicKey{0x01, 0x02},
+			},
+			{
+				Bytes: bls.SerializedPublicKey{0x02, 0x04},
+			},
+		},
+	}
+
+	for i := 0; i < b.N; i++ {
+		msg.id()
+	}
+}
+
 func TestGetMessagesByTypeSeqViewHash(t *testing.T) {
 	pbftMsg := FBFTMessage{
 		MessageType: msg_pb.MessageType_ANNOUNCE,
