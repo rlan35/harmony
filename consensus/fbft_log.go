@@ -6,12 +6,11 @@ import (
 	"hash"
 	"sync"
 
-	"golang.org/x/crypto/sha3"
-
 	"github.com/ethereum/go-ethereum/common"
 	bls_core "github.com/harmony-one/bls/ffi/go/bls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
+	"golang.org/x/crypto/sha3"
 
 	msg_pb "github.com/harmony-one/harmony/api/proto/message"
 	"github.com/harmony-one/harmony/core/types"
