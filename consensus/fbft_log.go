@@ -3,7 +3,10 @@ package consensus
 import (
 	"encoding/binary"
 	"fmt"
+	"hash"
 	"sync"
+
+	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/common"
 	bls_core "github.com/harmony-one/bls/ffi/go/bls"
@@ -61,27 +64,35 @@ func (m *FBFTMessage) String() string {
 }
 
 const (
-	idTypeBytes   = 4
-	idHashBytes   = common.HashLength
-	idSenderBytes = bls.PublicKeySizeInBytes
-
-	idBytes = idTypeBytes + idHashBytes + idSenderBytes
+	idBytes = common.HashLength
 )
 
 type (
 	// fbftMsgID is the id that uniquely defines a fbft message.
+	// The ID is the hash of the following byte concatenation:
+	// 1. Message types  2. Block Hash  3. Sender keys
 	fbftMsgID [idBytes]byte
 )
 
+var shaPool = sync.Pool{
+	New: func() interface{} {
+		return sha3.NewLegacyKeccak256()
+	},
+}
+
 // id return the ID of the FBFT message which uniquely identifies a FBFT message.
-// The ID is a concatenation of MsgType, BlockHash, and sender key
 func (m *FBFTMessage) id() fbftMsgID {
 	var id fbftMsgID
-	binary.LittleEndian.PutUint32(id[:], uint32(m.MessageType))
-	copy(id[idTypeBytes:], m.BlockHash[:])
-	if m.SenderPubkey != nil {
-		copy(id[idTypeBytes+idHashBytes:], m.SenderPubkey.Bytes[:])
+
+	sha := shaPool.Get().(hash.Hash)
+	defer shaPool.Put(sha)
+	sha.Reset()
+	binary.Write(sha, binary.LittleEndian, uint32(m.MessageType))
+	sha.Write(m.BlockHash[:])
+	for _, senderKey := range m.SenderPubkeys {
+		sha.Write(senderKey.Bytes[:])
 	}
+	sha.Sum(id[:0])
 	return id
 }
 
