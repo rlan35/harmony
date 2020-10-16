@@ -75,7 +75,7 @@ type (
 
 var shaPool = sync.Pool{
 	New: func() interface{} {
-		return sha3.NewLegacyKeccak256()
+		return sha3.New256()
 	},
 }
 
