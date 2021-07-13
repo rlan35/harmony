@@ -326,9 +326,9 @@ func AccumulateRewardsAndCountSigs(
 
 			// Finally do the pay
 			startTimeLocal := time.Now()
-			readSnapshot := int64(0)
-			lookupShares := int64(0)
-			addReward := int64(0)
+			readSnapshot := time.Duration(0)
+			lookupShares := time.Duration(0)
+			addReward := time.Duration(0)
 			for bucket := range resultsHandle {
 				for payThem := range resultsHandle[bucket] {
 					payable := resultsHandle[bucket][payThem]
@@ -336,7 +336,7 @@ func AccumulateRewardsAndCountSigs(
 					snapshot, err := bc.ReadValidatorSnapshot(
 						payable.EcdsaAddress,
 					)
-					readSnapshot += time.Since(time1).Milliseconds()
+					readSnapshot = readSnapshot + time.Since(time1)
 
 					if err != nil {
 						return network.EmptyPayout, err
@@ -346,7 +346,7 @@ func AccumulateRewardsAndCountSigs(
 
 					time1 = time.Now()
 					shares, err := lookupDelegatorShares(snapshot)
-					lookupShares += time.Since(time1).Milliseconds()
+					lookupShares += time.Since(time1)
 					if err != nil {
 						return network.EmptyPayout, err
 					}
@@ -354,7 +354,7 @@ func AccumulateRewardsAndCountSigs(
 					if err := state.AddReward(snapshot.Validator, due, shares); err != nil {
 						return network.EmptyPayout, err
 					}
-					addReward += time.Since(time1).Milliseconds()
+					addReward += time.Since(time1)
 					shardP = append(shardP, reward.Payout{
 						ShardID:     payable.shardID,
 						Addr:        payable.EcdsaAddress,
@@ -364,9 +364,9 @@ func AccumulateRewardsAndCountSigs(
 				}
 			}
 			utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTimeLocal).Milliseconds()).Msg("Shard Chain Reward (AddReward)")
-			utils.Logger().Debug().Int64("elapsed time", readSnapshot).Msg("Shard Chain Reward (readSnapshot)")
-			utils.Logger().Debug().Int64("elapsed time", lookupShares).Msg("Shard Chain Reward (lookupShares)")
-			utils.Logger().Debug().Int64("elapsed time", addReward).Msg("Shard Chain Reward (addReward)")
+			utils.Logger().Debug().Int64("elapsed time", readSnapshot.Milliseconds()).Msg("Shard Chain Reward (readSnapshot)")
+			utils.Logger().Debug().Int64("elapsed time", lookupShares.Milliseconds()).Msg("Shard Chain Reward (lookupShares)")
+			utils.Logger().Debug().Int64("elapsed time", addReward.Milliseconds()).Msg("Shard Chain Reward (addReward)")
 			utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Int("payables", len(resultsHandle)).Msg("Shard Chain Reward")
 		}
 
@@ -408,9 +408,9 @@ func AccumulateRewardsAndCountSigs(
 				allSignersShare = allSignersShare.Add(voterShare)
 			}
 		}
-		readSnapshot := int64(0)
-		lookupShares := int64(0)
-		addReward := int64(0)
+		readSnapshot := time.Duration(0)
+		lookupShares := time.Duration(0)
+		addReward := time.Duration(0)
 		for beaconMember := range payable {
 			// TODO Give out whatever leftover to the last voter/handle
 			// what to do about share of those that didn't sign
@@ -419,7 +419,7 @@ func AccumulateRewardsAndCountSigs(
 			if !voter.IsHarmonyNode {
 				time1 := time.Now()
 				snapshot, err := bc.ReadValidatorSnapshot(voter.EarningAccount)
-				readSnapshot += time.Since(time1).Milliseconds()
+				readSnapshot += time.Since(time1)
 				if err != nil {
 					return network.EmptyPayout, err
 				}
@@ -430,7 +430,7 @@ func AccumulateRewardsAndCountSigs(
 
 				time1 = time.Now()
 				shares, err := lookupDelegatorShares(snapshot)
-				lookupShares += time.Since(time1).Milliseconds()
+				lookupShares += time.Since(time1)
 				if err != nil {
 					return network.EmptyPayout, err
 				}
@@ -438,7 +438,7 @@ func AccumulateRewardsAndCountSigs(
 				if err := state.AddReward(snapshot.Validator, due, shares); err != nil {
 					return network.EmptyPayout, err
 				}
-				addReward += time.Since(time1).Milliseconds()
+				addReward += time.Since(time1)
 				beaconP = append(beaconP, reward.Payout{
 					ShardID:     shard.BeaconChainShardID,
 					Addr:        voter.EarningAccount,
@@ -447,9 +447,9 @@ func AccumulateRewardsAndCountSigs(
 				})
 			}
 		}
-		utils.Logger().Debug().Int64("elapsed time", readSnapshot).Msg("Shard Chain Reward (readSnapshot)")
-		utils.Logger().Debug().Int64("elapsed time", lookupShares).Msg("Shard Chain Reward (lookupShares)")
-		utils.Logger().Debug().Int64("elapsed time", addReward).Msg("Shard Chain Reward (addReward)")
+		utils.Logger().Debug().Int64("elapsed time", readSnapshot.Milliseconds()).Msg("Shard Chain Reward (readSnapshot)")
+		utils.Logger().Debug().Int64("elapsed time", lookupShares.Milliseconds()).Msg("Shard Chain Reward (lookupShares)")
+		utils.Logger().Debug().Int64("elapsed time", addReward.Milliseconds()).Msg("Shard Chain Reward (addReward)")
 		utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Int("payables", len(payable)).Msg("Beacon Chain Reward")
 
 		return network.NewStakingEraRewardForRound(
