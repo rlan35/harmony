@@ -326,25 +326,35 @@ func AccumulateRewardsAndCountSigs(
 
 			// Finally do the pay
 			startTimeLocal := time.Now()
+			readSnapshot := int64(0)
+			lookupShares := int64(0)
+			addReward := int64(0)
 			for bucket := range resultsHandle {
 				for payThem := range resultsHandle[bucket] {
 					payable := resultsHandle[bucket][payThem]
+					time1 := time.Now()
 					snapshot, err := bc.ReadValidatorSnapshot(
 						payable.EcdsaAddress,
 					)
+					readSnapshot += time.Since(time1).Milliseconds()
+
 					if err != nil {
 						return network.EmptyPayout, err
 					}
 					due := resultsHandle[bucket][payThem].payout
 					newRewards.Add(newRewards, due)
 
+					time1 = time.Now()
 					shares, err := lookupDelegatorShares(snapshot)
+					lookupShares += time.Since(time1).Milliseconds()
 					if err != nil {
 						return network.EmptyPayout, err
 					}
+					time1 = time.Now()
 					if err := state.AddReward(snapshot.Validator, due, shares); err != nil {
 						return network.EmptyPayout, err
 					}
+					addReward += time.Since(time1).Milliseconds()
 					shardP = append(shardP, reward.Payout{
 						ShardID:     payable.shardID,
 						Addr:        payable.EcdsaAddress,
@@ -354,7 +364,10 @@ func AccumulateRewardsAndCountSigs(
 				}
 			}
 			utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTimeLocal).Milliseconds()).Msg("Shard Chain Reward (AddReward)")
-			utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Msg("Shard Chain Reward")
+			utils.Logger().Debug().Int64("elapsed time", readSnapshot).Msg("Shard Chain Reward (readSnapshot)")
+			utils.Logger().Debug().Int64("elapsed time", lookupShares).Msg("Shard Chain Reward (lookupShares)")
+			utils.Logger().Debug().Int64("elapsed time", addReward).Msg("Shard Chain Reward (addReward)")
+			utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Int("payables", len(resultsHandle)).Msg("Shard Chain Reward")
 		}
 
 		// Block here until the commit sigs are ready or timeout.
@@ -395,13 +408,18 @@ func AccumulateRewardsAndCountSigs(
 				allSignersShare = allSignersShare.Add(voterShare)
 			}
 		}
+		readSnapshot := int64(0)
+		lookupShares := int64(0)
+		addReward := int64(0)
 		for beaconMember := range payable {
 			// TODO Give out whatever leftover to the last voter/handle
 			// what to do about share of those that didn't sign
 			blsKey := payable[beaconMember].BLSPublicKey
 			voter := votingPower.Voters[blsKey]
 			if !voter.IsHarmonyNode {
+				time1 := time.Now()
 				snapshot, err := bc.ReadValidatorSnapshot(voter.EarningAccount)
+				readSnapshot += time.Since(time1).Milliseconds()
 				if err != nil {
 					return network.EmptyPayout, err
 				}
@@ -410,13 +428,17 @@ func AccumulateRewardsAndCountSigs(
 				).RoundInt()
 				newRewards.Add(newRewards, due)
 
+				time1 = time.Now()
 				shares, err := lookupDelegatorShares(snapshot)
+				lookupShares += time.Since(time1).Milliseconds()
 				if err != nil {
 					return network.EmptyPayout, err
 				}
+				time1 = time.Now()
 				if err := state.AddReward(snapshot.Validator, due, shares); err != nil {
 					return network.EmptyPayout, err
 				}
+				addReward += time.Since(time1).Milliseconds()
 				beaconP = append(beaconP, reward.Payout{
 					ShardID:     shard.BeaconChainShardID,
 					Addr:        voter.EarningAccount,
@@ -425,7 +447,10 @@ func AccumulateRewardsAndCountSigs(
 				})
 			}
 		}
-		utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Msg("Beacon Chain Reward")
+		utils.Logger().Debug().Int64("elapsed time", readSnapshot).Msg("Shard Chain Reward (readSnapshot)")
+		utils.Logger().Debug().Int64("elapsed time", lookupShares).Msg("Shard Chain Reward (lookupShares)")
+		utils.Logger().Debug().Int64("elapsed time", addReward).Msg("Shard Chain Reward (addReward)")
+		utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Int("payables", len(payable)).Msg("Beacon Chain Reward")
 
 		return network.NewStakingEraRewardForRound(
 			newRewards, missing, beaconP, shardP,
